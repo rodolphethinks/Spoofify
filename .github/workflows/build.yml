@@ -1,0 +1,56 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+
+      - run: flutter build apk --release
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "date=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APK
+        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/spoofify-${{ steps.version.outputs.version }}.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}-${{ github.run_number }}
+          name: Spoofify v${{ steps.version.outputs.version }} (Build ${{ github.run_number }})
+          body: |
+            **Spoofify** — Ad-free Spotify playlist player
+
+            Built on ${{ steps.version.outputs.date }} from commit ${{ github.sha }}.
+
+            ### Install
+            1. Download the APK below
+            2. Open it on your Android phone
+            3. Allow "Install from unknown sources" if prompted
+          files: build/app/outputs/flutter-apk/spoofify-${{ steps.version.outputs.version }}.apk
+          draft: false
+          prerelease: false
