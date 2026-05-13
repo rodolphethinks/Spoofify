@@ -49,7 +49,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun fetchAndDownload(title: String, artist: String, cacheDir: String): String? {
-        val query = if (artist.isNotEmpty()) "$artist - $title" else title
+        val query = if (artist.isNotEmpty()) "$artist - $title lyrics" else "$title lyrics"
         Log.d("NewPipe", "Searching for: $query")
 
         // Try regular YouTube search first (more reliable than YouTube Music)

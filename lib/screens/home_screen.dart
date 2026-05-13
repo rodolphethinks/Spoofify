@@ -58,9 +58,13 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment: provider.playlistHistory.isEmpty
+                ? MainAxisAlignment.center
+                : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (provider.playlistHistory.isNotEmpty)
+                const SizedBox(height: 32),
               // Logo / title
               const Text(
                 'Spoofify',
@@ -143,6 +147,49 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                       ),
               ),
+
+              // History
+              if (provider.playlistHistory.isNotEmpty) ...[
+                const SizedBox(height: 32),
+                const Text(
+                  'Recent playlists',
+                  style: TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: provider.playlistHistory.length,
+                    itemBuilder: (context, i) {
+                      final entry = provider.playlistHistory[i];
+                      final parts = entry.split('\n');
+                      final name = parts[0];
+                      final url = parts.length > 1 ? parts[1] : '';
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.queue_music,
+                            color: Color(0xFF1DB954), size: 20),
+                        title: Text(name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 14)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close,
+                              color: Colors.white38, size: 16),
+                          onPressed: () =>
+                              provider.removeHistoryEntry(i),
+                        ),
+                        onTap: () {
+                          _controller.text = url;
+                          _submit();
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
             ],
           ),
         ),

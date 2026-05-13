@@ -35,19 +35,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
           provider.playlistName,
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(16),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8, left: 16),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '${provider.tracks.length} tracks · tap to play ad-free',
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-            ),
-          ),
-        ),
       ),
       body: Column(
         children: [
@@ -129,6 +116,12 @@ class _PlayerBar extends StatelessWidget {
   final PlayerProvider provider;
   const _PlayerBar({required this.provider});
 
+  String _formatDuration(Duration d) {
+    final mins = d.inMinutes;
+    final secs = d.inSeconds % 60;
+    return '$mins:${secs.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final model = provider.tracks[provider.currentIndex];
@@ -147,27 +140,49 @@ class _PlayerBar extends StatelessWidget {
               final progress = dur.inMilliseconds > 0
                   ? pos.inMilliseconds / dur.inMilliseconds
                   : 0.0;
-              return SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 2,
-                  thumbShape:
-                      const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape:
-                      const RoundSliderOverlayShape(overlayRadius: 12),
-                  activeTrackColor: const Color(0xFF1DB954),
-                  inactiveTrackColor: Colors.white12,
-                  thumbColor: Colors.white,
-                  overlayColor: Colors.white12,
-                ),
-                child: Slider(
-                  value: progress.clamp(0.0, 1.0),
-                  onChanged: (v) {
-                    if (dur.inMilliseconds > 0) {
-                      provider.seekTo(
-                          Duration(milliseconds: (v * dur.inMilliseconds).round()));
-                    }
-                  },
-                ),
+              return Column(
+                children: [
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2,
+                      thumbShape:
+                          const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape:
+                          const RoundSliderOverlayShape(overlayRadius: 12),
+                      activeTrackColor: const Color(0xFF1DB954),
+                      inactiveTrackColor: Colors.white12,
+                      thumbColor: Colors.white,
+                      overlayColor: Colors.white12,
+                    ),
+                    child: Slider(
+                      value: progress.clamp(0.0, 1.0),
+                      onChanged: (v) {
+                        if (dur.inMilliseconds > 0) {
+                          provider.seekTo(
+                              Duration(milliseconds: (v * dur.inMilliseconds).round()));
+                        }
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(pos),
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 11),
+                        ),
+                        Text(
+                          _formatDuration(dur),
+                          style: const TextStyle(
+                              color: Colors.white54, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -205,6 +220,14 @@ class _PlayerBar extends StatelessWidget {
                 ),
 
                 // Controls
+                IconButton(
+                  onPressed: provider.toggleShuffle,
+                  icon: Icon(Icons.shuffle,
+                      color: provider.shuffleEnabled
+                          ? const Color(0xFF1DB954)
+                          : Colors.white38,
+                      size: 22),
+                ),
                 IconButton(
                   onPressed: provider.seekPrev,
                   icon: const Icon(Icons.skip_previous,

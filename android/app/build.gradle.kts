@@ -31,7 +31,7 @@ android {
         applicationId = "com.spoofify.spoofify_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 24
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -57,7 +57,7 @@ flutter {
 }
 
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation("com.github.teamnewpipe:NewPipeExtractor:v0.25.2")
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
 }
