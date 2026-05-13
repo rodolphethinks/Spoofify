@@ -1,0 +1,5 @@
+-dontwarn com.google.re2j.**
+-dontwarn java.beans.**
+-dontwarn javax.script.**
+-dontwarn org.mozilla.javascript.**
+-dontwarn org.jsoup.helper.Re2jRegex**
