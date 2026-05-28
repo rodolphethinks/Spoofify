@@ -181,8 +181,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                 color: Color(0xFF1DB954),
                               ),
                             ),
-                          TrackState.error => const Icon(Icons.error_outline,
-                              color: Colors.redAccent, size: 20),
+                          TrackState.error => Tooltip(
+                              message: model.error ?? 'Unknown error',
+                              child: const Icon(Icons.error_outline,
+                                  color: Colors.redAccent, size: 20)),
                           _ => Text(
                               '${i + 1}',
                               style: TextStyle(
@@ -208,7 +210,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             isCurrent ? FontWeight.bold : FontWeight.normal,
                       ),
                     ),
-                    subtitle: model.track.artists.isNotEmpty
+                    subtitle: model.state == TrackState.error && model.error != null
+                        ? Text(
+                            model.error!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.redAccent, fontSize: 11),
+                          )
+                        : model.track.artists.isNotEmpty
                         ? Text(
                             model.track.artists,
                             maxLines: 1,
