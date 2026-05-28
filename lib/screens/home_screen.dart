@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/player_provider.dart';
+import '../services/offline_service.dart';
+import '../services/spotify_service.dart';
 import 'player_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -13,7 +15,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _controller = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
+  bool _isSearching = false;
+  List<SpotifySearchResult> _searchResults = [];
 
   @override
   void initState() {
@@ -36,14 +39,45 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+
+    if (SpotifyService.isSpotifyUrl(text)) {
+      await _loadPlaylistUrl(text);
+    } else {
+      await _performSearch(text);
+    }
+  }
+
+  Future<void> _loadPlaylistUrl(String url) async {
     final provider = context.read<PlayerProvider>();
-    await provider.loadPlaylist(_controller.text.trim());
+    await provider.loadPlaylist(url);
     if (!mounted) return;
     if (provider.playlistError == null) {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const PlayerScreen()),
+      );
+    }
+  }
+
+  Future<void> _performSearch(String query) async {
+    setState(() {
+      _isSearching = true;
+      _searchResults = [];
+    });
+    try {
+      final results = await SpotifyService.search(query);
+      if (!mounted) return;
+      setState(() {
+        _searchResults = results;
+        _isSearching = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSearching = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Search failed: $e')),
       );
     }
   }
@@ -58,14 +92,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
-            mainAxisAlignment: provider.playlistHistory.isEmpty
-                ? MainAxisAlignment.center
-                : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (provider.playlistHistory.isNotEmpty)
-                const SizedBox(height: 32),
-              // Logo / title
+              const SizedBox(height: 16),
               const Text(
                 'Spoofify',
                 textAlign: TextAlign.center,
@@ -82,36 +111,37 @@ class _HomeScreenState extends State<HomeScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white54, fontSize: 14),
               ),
-              const SizedBox(height: 48),
+              const SizedBox(height: 32),
 
-              // URL input
-              Form(
-                key: _formKey,
-                child: TextFormField(
-                  controller: _controller,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Paste Spotify playlist / album / track link',
-                    hintStyle: const TextStyle(color: Colors.white38),
-                    filled: true,
-                    fillColor: const Color(0xFF282828),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
-                    prefixIcon: const Icon(Icons.link, color: Colors.white38),
+              // URL/Search input
+              TextField(
+                controller: _controller,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Paste Spotify link or search...',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: const Color(0xFF282828),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
                   ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Paste a Spotify link';
-                    if (!v.contains('open.spotify.com')) return 'Must be a Spotify URL';
-                    return null;
-                  },
-                  onFieldSubmitted: (_) => _submit(),
+                  prefixIcon: const Icon(Icons.search, color: Colors.white38),
+                  suffixIcon: _controller.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white38),
+                          onPressed: () {
+                            _controller.clear();
+                            setState(() => _searchResults = []);
+                          },
+                        )
+                      : null,
                 ),
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _submit(),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
-              // Error
               if (provider.playlistError != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -122,18 +152,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
-              // Button
               FilledButton(
-                onPressed: provider.isLoadingPlaylist ? null : _submit,
+                onPressed: (provider.isLoadingPlaylist || _isSearching)
+                    ? null
+                    : _submit,
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF1DB954),
                   foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(50),
                   ),
                 ),
-                child: provider.isLoadingPlaylist
+                child: (provider.isLoadingPlaylist || _isSearching)
                     ? const SizedBox(
                         height: 20,
                         width: 20,
@@ -143,57 +174,133 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       )
                     : const Text(
-                        'Open Playlist',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        'Go',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
                       ),
               ),
 
-              // History
-              if (provider.playlistHistory.isNotEmpty) ...[
-                const SizedBox(height: 32),
-                const Text(
-                  'Recent playlists',
-                  style: TextStyle(color: Colors.white54, fontSize: 13),
-                ),
-                const SizedBox(height: 8),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: provider.playlistHistory.length,
-                    itemBuilder: (context, i) {
-                      final entry = provider.playlistHistory[i];
-                      final parts = entry.split('\n');
-                      final name = parts[0];
-                      final url = parts.length > 1 ? parts[1] : '';
-                      return ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.queue_music,
-                            color: Color(0xFF1DB954), size: 20),
-                        title: Text(name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 14)),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close,
-                              color: Colors.white38, size: 16),
-                          onPressed: () =>
-                              provider.removeHistoryEntry(i),
-                        ),
-                        onTap: () {
-                          _controller.text = url;
-                          _submit();
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
+              const SizedBox(height: 16),
+
+              // Search results, favorites, or history
+              Expanded(
+                child: _searchResults.isNotEmpty
+                    ? _buildSearchResults()
+                    : _buildFavoritesAndHistory(provider),
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSearchResults() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text('Search results',
+                style: TextStyle(color: Colors.white54, fontSize: 13)),
+            const Spacer(),
+            TextButton(
+              onPressed: () => setState(() => _searchResults = []),
+              child: const Text('Clear',
+                  style: TextStyle(color: Colors.white38, fontSize: 12)),
+            ),
+          ],
+        ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: _searchResults.length,
+            itemBuilder: (context, i) {
+              final r = _searchResults[i];
+              return ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  r.type == 'playlist'
+                      ? Icons.queue_music
+                      : r.type == 'album'
+                          ? Icons.album
+                          : Icons.music_note,
+                  color: const Color(0xFF1DB954),
+                  size: 22,
+                ),
+                title: Text(r.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 14)),
+                subtitle: Text(
+                  '${r.type[0].toUpperCase()}${r.type.substring(1)}${r.subtitle.isNotEmpty ? ' · ${r.subtitle}' : ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+                onTap: () => _loadPlaylistUrl(r.url),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFavoritesAndHistory(PlayerProvider provider) {
+    return ListView(
+      children: [
+        // Favorites section
+        if (provider.favorites.isNotEmpty) ...[
+          const Text('Favorites',
+              style: TextStyle(
+                  color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          ...provider.favorites.map((p) => ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.favorite,
+                    color: Color(0xFF1DB954), size: 20),
+                title: Text(p.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 14)),
+                subtitle: Text(
+                    '${p.downloadedCount}/${p.tracks.length} downloaded',
+                    style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                onTap: () => _loadPlaylistUrl(p.url),
+              )),
+          const SizedBox(height: 16),
+        ],
+        // History section
+        if (provider.playlistHistory.isNotEmpty) ...[
+          const Text('Recent playlists',
+              style: TextStyle(color: Colors.white54, fontSize: 13)),
+          const SizedBox(height: 8),
+          ...List.generate(provider.playlistHistory.length, (i) {
+            final entry = provider.playlistHistory[i];
+            final parts = entry.split('\n');
+            final name = parts[0];
+            final url = parts.length > 1 ? parts[1] : '';
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.queue_music,
+                  color: Color(0xFF1DB954), size: 20),
+              title: Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 14)),
+              trailing: IconButton(
+                icon: const Icon(Icons.close,
+                    color: Colors.white38, size: 16),
+                onPressed: () => provider.removeHistoryEntry(i),
+              ),
+              onTap: () => _loadPlaylistUrl(url),
+            );
+          }),
+        ],
+      ],
     );
   }
 }

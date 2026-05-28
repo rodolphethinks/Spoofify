@@ -24,6 +24,20 @@ class YoutubeService {
     }
   }
 
+  /// Download to a specific permanent directory and return the file path.
+  static Future<String?> getAudioSourceToDir(
+      String title, String artists, String dir) async {
+    final completer = Completer<void>();
+    final previousLock = _lock;
+    _lock = completer.future;
+    await previousLock;
+    try {
+      return await _downloadToDir(title, artists, dir);
+    } finally {
+      completer.complete();
+    }
+  }
+
   static Future<AudioSource?> _fetchAudioSource(
       String title, String artists) async {
     debugPrint('[YT] Fetching: $artists - $title');
@@ -40,6 +54,30 @@ class YoutubeService {
       }
       debugPrint('[YT] Got file: $filePath');
       return AudioSource.file(filePath);
+    } on PlatformException catch (e) {
+      debugPrint('[YT] Platform error: ${e.code} - ${e.message}');
+      return null;
+    } catch (e) {
+      debugPrint('[YT] Error: $e');
+      return null;
+    }
+  }
+
+  static Future<String?> _downloadToDir(
+      String title, String artists, String dir) async {
+    debugPrint('[YT] Downloading to dir: $artists - $title');
+    try {
+      final filePath = await _channel.invokeMethod<String>('getAudioFile', {
+        'title': title,
+        'artist': artists,
+        'cacheDir': dir,
+      });
+      if (filePath == null) {
+        debugPrint('[YT] No audio found');
+        return null;
+      }
+      debugPrint('[YT] Downloaded: $filePath');
+      return filePath;
     } on PlatformException catch (e) {
       debugPrint('[YT] Platform error: ${e.code} - ${e.message}');
       return null;
