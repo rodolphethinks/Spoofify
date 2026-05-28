@@ -32,22 +32,48 @@ class SpotifyService {
   static String? _cachedToken;
   static int _tokenExpiry = 0;
 
-  /// Get an anonymous access token from Spotify's web player.
+  /// Get an anonymous access token from a Spotify embed page.
+  /// Embed pages are known to work (getTracks uses them successfully).
   static Future<String> _getAnonymousToken() async {
     final now = DateTime.now().millisecondsSinceEpoch;
     if (_cachedToken != null && now < _tokenExpiry - 60000) {
       return _cachedToken!;
     }
 
-    // Try the dedicated token endpoint first
+    // Fetch a well-known embed page — these always work and contain an accessToken
+    final response = await http.get(
+      Uri.parse('https://open.spotify.com/embed/track/4PTG3Z6ehGkBFwjybzWkR8'),
+      headers: {
+        'User-Agent':
+            'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to get Spotify token: ${response.statusCode}');
+    }
+
+    // Look for accessToken in the page (can be in __NEXT_DATA__ or inline scripts)
+    final tokenRe = RegExp(r'"accessToken"\s*:\s*"([^"]+)"');
+    final match = tokenRe.firstMatch(response.body);
+    if (match != null) {
+      _cachedToken = match.group(1)!;
+      final expiryRe = RegExp(r'"accessTokenExpirationTimestampMs"\s*:\s*(\d+)');
+      final expiryMatch = expiryRe.firstMatch(response.body);
+      _tokenExpiry = expiryMatch != null
+          ? int.parse(expiryMatch.group(1)!)
+          : now + 3600000;
+      return _cachedToken!;
+    }
+
+    // Fallback: try the dedicated token endpoint
     try {
       final tokenResponse = await http.get(
         Uri.parse(
-            'https://open.spotify.com/get_access_token?reason=transport&productType=web_player'),
+            'https://open.spotify.com/get_access_token?reason=transport&productType=embed'),
         headers: {
           'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-          'Accept': 'application/json',
+              'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36',
         },
       );
       if (tokenResponse.statusCode == 200) {
@@ -62,36 +88,7 @@ class SpotifyService {
       }
     } catch (_) {}
 
-    // Fallback: parse the main page HTML
-    final response = await http.get(
-      Uri.parse('https://open.spotify.com'),
-      headers: {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-      },
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('Failed to get Spotify token: ${response.statusCode}');
-    }
-
-    final tokenRe = RegExp(r'"accessToken"\s*:\s*"([^"]+)"');
-    final match = tokenRe.firstMatch(response.body);
-    if (match == null) {
-      throw Exception('Could not extract access token from Spotify');
-    }
-
-    _cachedToken = match.group(1)!;
-
-    final expiryRe = RegExp(r'"accessTokenExpirationTimestampMs"\s*:\s*(\d+)');
-    final expiryMatch = expiryRe.firstMatch(response.body);
-    if (expiryMatch != null) {
-      _tokenExpiry = int.parse(expiryMatch.group(1)!);
-    } else {
-      _tokenExpiry = now + 3600000;
-    }
-
-    return _cachedToken!;
+    throw Exception('Could not extract access token from Spotify');
   }
 
   /// Search Spotify for playlists/albums/tracks using the Web API.

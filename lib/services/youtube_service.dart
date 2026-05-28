@@ -56,10 +56,10 @@ class YoutubeService {
       return AudioSource.file(filePath);
     } on PlatformException catch (e) {
       debugPrint('[YT] Platform error: ${e.code} - ${e.message}');
-      return null;
+      throw Exception('YouTube: ${e.message ?? e.code}');
     } catch (e) {
       debugPrint('[YT] Error: $e');
-      return null;
+      rethrow;
     }
   }
 

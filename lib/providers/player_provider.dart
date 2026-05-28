@@ -241,10 +241,23 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
 
-    final source = await YoutubeService.getAudioSource(
-      model.track.title,
-      model.track.artists,
-    );
+    AudioSource? source;
+    try {
+      source = await YoutubeService.getAudioSource(
+        model.track.title,
+        model.track.artists,
+      );
+    } catch (e) {
+      debugPrint('[Player] YouTube error: $e');
+      if (seq != _playSeq) return;
+      model.state = TrackState.error;
+      model.error = e.toString().replaceFirst('Exception: ', '');
+      notifyListeners();
+      // Delay before advancing so user can see the error
+      await Future.delayed(const Duration(seconds: 2));
+      if (seq == _playSeq) _advance();
+      return;
+    }
 
     if (seq != _playSeq) {
       debugPrint('[Player] Aborted seq=$seq (current=$_playSeq)');
@@ -256,7 +269,9 @@ class PlayerProvider extends ChangeNotifier {
       model.state = TrackState.error;
       model.error = 'Not found on YouTube';
       notifyListeners();
-      _advance();
+      // Delay before advancing so user can see the error
+      await Future.delayed(const Duration(seconds: 2));
+      if (seq == _playSeq) _advance();
       return;
     }
 

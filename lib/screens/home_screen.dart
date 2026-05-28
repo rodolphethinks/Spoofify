@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/player_provider.dart';
-import '../services/offline_service.dart';
 import '../services/spotify_service.dart';
 import 'player_screen.dart';
 

@@ -9,7 +9,7 @@ late SpoofifyAudioHandler audioHandler;
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    final handler = await AudioService.init(
+    final handler = await AudioService.init<SpoofifyAudioHandler>(
       builder: () => SpoofifyAudioHandler(),
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.spoofify.audio',
@@ -18,7 +18,7 @@ Future<void> main() async {
         androidStopForegroundOnPause: true,
       ),
     );
-    audioHandler = handler as SpoofifyAudioHandler;
+    audioHandler = handler;
   } catch (e) {
     debugPrint('[Main] AudioService.init failed: $e');
     audioHandler = SpoofifyAudioHandler();

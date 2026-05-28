@@ -114,6 +114,7 @@ class MainActivity : FlutterActivity() {
         Log.d("NewPipe", "Downloading to: $filePath")
         val request = okhttp3.Request.Builder()
             .url(url)
+            .addHeader("User-Agent", NewPipeDownloader.USER_AGENT)
             .addHeader("Range", "bytes=0-")
             .build()
 
