@@ -7,6 +7,7 @@ import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.*
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList.YouTube
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 
@@ -102,6 +103,12 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private val PIPED_INSTANCES = listOf(
+        "https://pipedapi.kavin.rocks",
+        "https://pipedapi.adminforge.de",
+        "https://pipedapi.in.projectsegfau.lt"
+    )
+
     private fun fetchAndDownload(title: String, artist: String, cacheDir: String): String? {
         val query = if (artist.isNotEmpty()) "$artist - $title lyrics" else "$title lyrics"
         Log.d("NewPipe", "Searching for: $query")
@@ -120,44 +127,138 @@ class MainActivity : FlutterActivity() {
                 val mediaLink = item.url
                 Log.d("NewPipe", "Trying result $index: ${item.name} ($mediaLink)")
 
+                // Extract video ID from URL
+                val videoId = extractVideoId(mediaLink)
+                if (videoId == null) {
+                    errors.add("#$index: can't extract video ID from $mediaLink")
+                    continue
+                }
+
+                // Try Piped API instances for stream extraction
+                val streamUrl = getAudioStreamFromPiped(videoId)
+                if (streamUrl != null) {
+                    Log.d("NewPipe", "Got Piped stream URL for $videoId")
+                    val result = downloadStream(streamUrl, title, "m4a", cacheDir)
+                    if (result != null) return result
+                    errors.add("#$index: Piped download failed")
+                    continue
+                }
+
+                // Fallback: try NewPipe direct extraction
                 val streamExtractor = YouTube.getStreamExtractor(mediaLink)
                 streamExtractor.fetchPage()
-
                 val audioStreams = streamExtractor.audioStreams
-                Log.d("NewPipe", "Got ${audioStreams.size} audio streams")
-                if (audioStreams.isEmpty()) {
-                    errors.add("#$index: no audio streams")
-                    continue
+                Log.d("NewPipe", "NewPipe fallback: ${audioStreams.size} audio streams")
+
+                if (audioStreams.isNotEmpty()) {
+                    val stream = audioStreams
+                        .filter { it.format?.suffix == "m4a" }
+                        .maxByOrNull { it.bitrate }
+                        ?: audioStreams.maxByOrNull { it.bitrate }
+
+                    if (stream != null) {
+                        val ext = stream.format?.suffix ?: "m4a"
+                        val result = downloadStream(stream.content, title, ext, cacheDir)
+                        if (result != null) return result
+                    }
                 }
-
-                for (s in audioStreams) {
-                    Log.d("NewPipe", "  stream: ${s.format?.suffix} ${s.bitrate}bps")
-                }
-
-                // Prefer m4a, then any format
-                val stream = audioStreams
-                    .filter { it.format?.suffix == "m4a" }
-                    .maxByOrNull { it.bitrate }
-                    ?: audioStreams.maxByOrNull { it.bitrate }
-
-                if (stream == null) {
-                    errors.add("#$index: could not select stream")
-                    continue
-                }
-
-                val ext = stream.format?.suffix ?: "m4a"
-                Log.d("NewPipe", "Using $ext at ${stream.bitrate}bps")
-                val result = downloadStream(stream.content, title, ext, cacheDir)
-                if (result != null) return result
-                errors.add("#$index: download failed")
+                errors.add("#$index: no audio streams from any source")
             } catch (e: Exception) {
                 Log.e("NewPipe", "Failed result $index: ${e.message}")
-                errors.add("#$index: ${e.message?.take(80)}")
+                errors.add("#$index: ${e.message?.take(100)}")
                 continue
             }
         }
 
         throw Exception("All attempts failed: ${errors.joinToString("; ")}")
+    }
+
+    private fun extractVideoId(url: String): String? {
+        // Handle: youtube.com/watch?v=ID, youtu.be/ID, youtube.com/shorts/ID
+        val patterns = listOf(
+            Regex("""[?&]v=([a-zA-Z0-9_-]{11})"""),
+            Regex("""youtu\.be/([a-zA-Z0-9_-]{11})"""),
+            Regex("""youtube\.com/shorts/([a-zA-Z0-9_-]{11})"""),
+            Regex("""youtube\.com/embed/([a-zA-Z0-9_-]{11})""")
+        )
+        for (pattern in patterns) {
+            val match = pattern.find(url)
+            if (match != null) return match.groupValues[1]
+        }
+        return null
+    }
+
+    private fun getAudioStreamFromPiped(videoId: String): String? {
+        for (instance in PIPED_INSTANCES) {
+            try {
+                val apiUrl = "$instance/streams/$videoId"
+                Log.d("NewPipe", "Trying Piped: $apiUrl")
+
+                val request = okhttp3.Request.Builder()
+                    .url(apiUrl)
+                    .addHeader("User-Agent", NewPipeDownloader.USER_AGENT)
+                    .addHeader("Accept", "application/json")
+                    .build()
+
+                val response = NewPipeDownloader.client.newCall(request).execute()
+                val result = try {
+                    if (!response.isSuccessful) {
+                        Log.w("NewPipe", "Piped $instance returned ${response.code}")
+                        null
+                    } else {
+                        parsePipedAudioStream(response.body.string(), instance)
+                    }
+                } finally {
+                    response.close()
+                }
+
+                if (result != null) return result
+            } catch (e: Exception) {
+                Log.w("NewPipe", "Piped $instance failed: ${e.message}")
+                continue
+            }
+        }
+        return null
+    }
+
+    private fun parsePipedAudioStream(body: String, instance: String): String? {
+        val json = JSONObject(body)
+        val audioStreams = json.optJSONArray("audioStreams")
+        if (audioStreams == null || audioStreams.length() == 0) {
+            Log.w("NewPipe", "Piped $instance: no audioStreams in response")
+            return null
+        }
+
+        // Find best audio stream (prefer m4a/mp4, highest bitrate)
+        var bestUrl: String? = null
+        var bestBitrate = 0
+        var fallbackUrl: String? = null
+        var fallbackBitrate = 0
+
+        for (i in 0 until audioStreams.length()) {
+            val stream = audioStreams.getJSONObject(i)
+            val url = stream.optString("url", "")
+            val bitrate = stream.optInt("bitrate", 0)
+            val mimeType = stream.optString("mimeType", "")
+
+            if (url.isEmpty()) continue
+
+            val isM4a = mimeType.contains("mp4") || mimeType.contains("m4a")
+
+            if (isM4a && bitrate > bestBitrate) {
+                bestUrl = url
+                bestBitrate = bitrate
+            } else if (bitrate > fallbackBitrate) {
+                fallbackUrl = url
+                fallbackBitrate = bitrate
+            }
+        }
+
+        val selectedUrl = bestUrl ?: fallbackUrl
+        if (selectedUrl != null) {
+            Log.d("NewPipe", "Piped $instance: got stream at ${bestBitrate.coerceAtLeast(fallbackBitrate)}bps")
+        }
+        return selectedUrl
     }
 
     private fun downloadStream(url: String, title: String, ext: String, cacheDir: String): String? {
