@@ -4,22 +4,28 @@ import 'package:provider/provider.dart';
 import 'providers/player_provider.dart';
 import 'screens/home_screen.dart';
 
-late AudioHandler audioHandler;
+late SpoofifyAudioHandler audioHandler;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  audioHandler = await AudioService.init(
-    builder: () => SpoofifyAudioHandler(),
-    config: const AudioServiceConfig(
-      androidNotificationChannelId: 'com.spoofify.audio',
-      androidNotificationChannelName: 'Spoofify',
-      androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
-    ),
-  );
+  try {
+    final handler = await AudioService.init(
+      builder: () => SpoofifyAudioHandler(),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.spoofify.audio',
+        androidNotificationChannelName: 'Spoofify',
+        androidNotificationOngoing: true,
+        androidStopForegroundOnPause: true,
+      ),
+    );
+    audioHandler = handler as SpoofifyAudioHandler;
+  } catch (e) {
+    debugPrint('[Main] AudioService.init failed: $e');
+    audioHandler = SpoofifyAudioHandler();
+  }
   runApp(
     ChangeNotifierProvider(
-      create: (_) => PlayerProvider(audioHandler as SpoofifyAudioHandler),
+      create: (_) => PlayerProvider(audioHandler),
       child: const SpoofifyApp(),
     ),
   );

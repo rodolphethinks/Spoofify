@@ -111,9 +111,13 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    await OfflineService.instance.load();
-    await _loadHistory();
-    notifyListeners();
+    try {
+      await OfflineService.instance.load();
+      await _loadHistory();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[Player] Init error: $e');
+    }
   }
 
   OfflineService get offline => OfflineService.instance;
