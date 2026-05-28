@@ -205,6 +205,16 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
+  /// Play a list of tracks directly (e.g. from YouTube search results)
+  void playSearchResults(List<Track> trackList, String name, int startIndex) {
+    tracks = trackList.map(TrackModel.new).toList();
+    playlistName = name;
+    currentPlaylistUrl = null;
+    playlistError = null;
+    notifyListeners();
+    playTrack(startIndex);
+  }
+
   Future<void> playTrack(int index) async {
     if (index < 0 || index >= tracks.length) return;
     final seq = ++_playSeq;

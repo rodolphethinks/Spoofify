@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/player_provider.dart';
 import '../services/spotify_service.dart';
+import '../services/youtube_service.dart';
 import 'player_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -66,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _searchResults = [];
     });
     try {
-      final results = await SpotifyService.search(query);
+      final results = await YoutubeService.search(query);
       if (!mounted) return;
       setState(() {
         _searchResults = results;
@@ -79,6 +80,42 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(content: Text('Search failed: $e')),
       );
     }
+  }
+
+  void _playSearchResult(SpotifySearchResult r) {
+    if (SpotifyService.isSpotifyUrl(r.url)) {
+      _loadPlaylistUrl(r.url);
+      return;
+    }
+    // YouTube result — play directly as a single track
+    final provider = context.read<PlayerProvider>();
+    // Parse title: remove common suffixes like "(Official Video)" etc.
+    var title = r.name;
+    var artist = r.subtitle;
+    // If title contains " - ", split into artist - title
+    if (title.contains(' - ')) {
+      final parts = title.split(' - ');
+      artist = parts[0].trim();
+      title = parts.sublist(1).join(' - ').trim();
+    }
+    // Remove common YouTube suffixes
+    title = title
+        .replaceAll(RegExp(r'\s*\(Official.*?\)', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s*\[Official.*?\]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s*\(Lyrics?\)', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s*\[Lyrics?\]', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s*\(Audio\)', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s*\|.*$'), '')
+        .trim();
+    provider.playSearchResults(
+      [Track(title: title, artists: artist)],
+      'Search',
+      0,
+    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PlayerScreen()),
+    );
   }
 
   @override
@@ -237,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white38, fontSize: 12),
                 ),
-                onTap: () => _loadPlaylistUrl(r.url),
+                onTap: () => _playSearchResult(r),
               );
             },
           ),
