@@ -440,10 +440,10 @@ class _PlayerBar extends StatelessWidget {
                 IconButton(
                   onPressed: provider.toggleRepeat,
                   icon: Icon(
-                    provider.repeatMode == RepeatMode.one
+                    provider.repeatMode == SpoofifyRepeatMode.one
                         ? Icons.repeat_one
                         : Icons.repeat,
-                    color: provider.repeatMode == RepeatMode.off
+                    color: provider.repeatMode == SpoofifyRepeatMode.off
                         ? Colors.white38
                         : const Color(0xFF1DB954),
                     size: 22,

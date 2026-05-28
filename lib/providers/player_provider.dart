@@ -12,7 +12,7 @@ import '../services/youtube_service.dart';
 
 enum TrackState { idle, loading, ready, error }
 
-enum RepeatMode { off, all, one }
+enum SpoofifyRepeatMode { off, all, one }
 
 class TrackModel {
   final Track track;
@@ -84,7 +84,7 @@ class PlayerProvider extends ChangeNotifier {
   bool isLoadingPlaylist = false;
   String? playlistError;
   bool shuffleEnabled = false;
-  RepeatMode repeatMode = RepeatMode.off;
+  SpoofifyRepeatMode repeatMode = SpoofifyRepeatMode.off;
   List<String> playlistHistory = [];
 
   int _playSeq = 0;
@@ -307,7 +307,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   void _advance() {
-    if (repeatMode == RepeatMode.one) {
+    if (repeatMode == SpoofifyRepeatMode.one) {
       playTrack(currentIndex);
       return;
     }
@@ -319,7 +319,7 @@ class PlayerProvider extends ChangeNotifier {
     final next = _getNextIndex();
     if (next < tracks.length) {
       playTrack(next);
-    } else if (repeatMode == RepeatMode.all) {
+    } else if (repeatMode == SpoofifyRepeatMode.all) {
       playTrack(0);
     }
   }
@@ -401,12 +401,12 @@ class PlayerProvider extends ChangeNotifier {
 
   void toggleRepeat() {
     switch (repeatMode) {
-      case RepeatMode.off:
-        repeatMode = RepeatMode.all;
-      case RepeatMode.all:
-        repeatMode = RepeatMode.one;
-      case RepeatMode.one:
-        repeatMode = RepeatMode.off;
+      case SpoofifyRepeatMode.off:
+        repeatMode = SpoofifyRepeatMode.all;
+      case SpoofifyRepeatMode.all:
+        repeatMode = SpoofifyRepeatMode.one;
+      case SpoofifyRepeatMode.one:
+        repeatMode = SpoofifyRepeatMode.off;
     }
     debugPrint('[Player] Repeat: $repeatMode');
     notifyListeners();
