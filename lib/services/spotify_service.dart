@@ -32,18 +32,42 @@ class SpotifyService {
   static String? _cachedToken;
   static int _tokenExpiry = 0;
 
-  /// Get an anonymous access token from Spotify's web player page.
+  /// Get an anonymous access token from Spotify's web player.
   static Future<String> _getAnonymousToken() async {
     final now = DateTime.now().millisecondsSinceEpoch;
     if (_cachedToken != null && now < _tokenExpiry - 60000) {
       return _cachedToken!;
     }
 
+    // Try the dedicated token endpoint first
+    try {
+      final tokenResponse = await http.get(
+        Uri.parse(
+            'https://open.spotify.com/get_access_token?reason=transport&productType=web_player'),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+        },
+      );
+      if (tokenResponse.statusCode == 200) {
+        final data = jsonDecode(tokenResponse.body);
+        final token = data['accessToken'] as String?;
+        if (token != null && token.isNotEmpty) {
+          _cachedToken = token;
+          _tokenExpiry =
+              data['accessTokenExpirationTimestampMs'] as int? ?? now + 3600000;
+          return _cachedToken!;
+        }
+      }
+    } catch (_) {}
+
+    // Fallback: parse the main page HTML
     final response = await http.get(
       Uri.parse('https://open.spotify.com'),
       headers: {
         'User-Agent':
-            'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
       },
     );
 
@@ -54,7 +78,7 @@ class SpotifyService {
     final tokenRe = RegExp(r'"accessToken"\s*:\s*"([^"]+)"');
     final match = tokenRe.firstMatch(response.body);
     if (match == null) {
-      throw Exception('Could not extract access token from Spotify page');
+      throw Exception('Could not extract access token from Spotify');
     }
 
     _cachedToken = match.group(1)!;
@@ -64,7 +88,7 @@ class SpotifyService {
     if (expiryMatch != null) {
       _tokenExpiry = int.parse(expiryMatch.group(1)!);
     } else {
-      _tokenExpiry = now + 3600000; // default 1h
+      _tokenExpiry = now + 3600000;
     }
 
     return _cachedToken!;
