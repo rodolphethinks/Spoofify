@@ -44,6 +44,28 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 }
+                "getAudioFileByUrl" -> {
+                    val url = call.argument<String>("url") ?: ""
+                    val title = call.argument<String>("title") ?: ""
+                    val cacheDir = call.argument<String>("cacheDir") ?: cacheDir.absolutePath
+
+                    scope.launch {
+                        try {
+                            val filePath = fetchByVideoUrl(url, title, cacheDir)
+                            withContext(Dispatchers.Main) {
+                                if (filePath != null) {
+                                    result.success(filePath)
+                                } else {
+                                    result.error("NOT_FOUND", "No audio from: $url", null)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                result.error("ERROR", e.message ?: "Unknown error", null)
+                            }
+                        }
+                    }
+                }
                 "searchYouTube" -> {
                     val query = call.argument<String>("query") ?: ""
                     scope.launch {
@@ -103,10 +125,39 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * Fetch audio directly from a YouTube URL (no search needed).
+     * Uses Piped API only — no YouTube network calls.
+     */
+    private fun fetchByVideoUrl(url: String, title: String, cacheDir: String): String? {
+        val videoId = extractVideoId(url)
+            ?: throw Exception("Invalid YouTube URL: $url")
+
+        Log.d("NewPipe", "fetchByVideoUrl: videoId=$videoId title=$title")
+
+        // Try Piped API first
+        val streamUrl = getAudioStreamFromPiped(videoId)
+        if (streamUrl != null) {
+            val result = downloadStream(streamUrl, title, "m4a", cacheDir)
+            if (result != null) return result
+        }
+
+        // Fallback: Invidious API
+        val invStreamUrl = getAudioStreamFromInvidious(videoId)
+        if (invStreamUrl != null) {
+            val result = downloadStream(invStreamUrl, title, "m4a", cacheDir)
+            if (result != null) return result
+        }
+
+        throw Exception("No audio stream found for: $videoId (all Piped+Invidious instances failed)")
+    }
+
     private val PIPED_INSTANCES = listOf(
         "https://pipedapi.kavin.rocks",
         "https://pipedapi.adminforge.de",
-        "https://pipedapi.in.projectsegfau.lt"
+        "https://pipedapi.in.projectsegfau.lt",
+        "https://api.piped.privacydev.net",
+        "https://pipedapi.darkness.services"
     )
 
     private fun fetchAndDownload(title: String, artist: String, cacheDir: String): String? {
@@ -141,7 +192,15 @@ class MainActivity : FlutterActivity() {
                     val result = downloadStream(streamUrl, title, "m4a", cacheDir)
                     if (result != null) return result
                     errors.add("#$index: Piped download failed")
-                    continue
+                }
+
+                // Try Invidious API
+                val invStreamUrl = getAudioStreamFromInvidious(videoId)
+                if (invStreamUrl != null) {
+                    Log.d("NewPipe", "Got Invidious stream URL for $videoId")
+                    val result = downloadStream(invStreamUrl, title, "m4a", cacheDir)
+                    if (result != null) return result
+                    errors.add("#$index: Invidious download failed")
                 }
 
                 // Fallback: try NewPipe direct extraction
@@ -259,6 +318,77 @@ class MainActivity : FlutterActivity() {
             Log.d("NewPipe", "Piped $instance: got stream at ${bestBitrate.coerceAtLeast(fallbackBitrate)}bps")
         }
         return selectedUrl
+    }
+
+    private val INVIDIOUS_INSTANCES = listOf(
+        "https://inv.nadeko.net",
+        "https://invidious.nerdvpn.de",
+        "https://invidious.privacyredirect.com"
+    )
+
+    private fun getAudioStreamFromInvidious(videoId: String): String? {
+        for (instance in INVIDIOUS_INSTANCES) {
+            try {
+                val apiUrl = "$instance/api/v1/videos/$videoId"
+                Log.d("NewPipe", "Trying Invidious: $apiUrl")
+
+                val request = okhttp3.Request.Builder()
+                    .url(apiUrl)
+                    .addHeader("User-Agent", NewPipeDownloader.USER_AGENT)
+                    .addHeader("Accept", "application/json")
+                    .build()
+
+                val response = NewPipeDownloader.client.newCall(request).execute()
+                val result = try {
+                    if (!response.isSuccessful) {
+                        Log.w("NewPipe", "Invidious $instance returned ${response.code}")
+                        null
+                    } else {
+                        parseInvidiousAudioStream(response.body.string(), instance)
+                    }
+                } finally {
+                    response.close()
+                }
+
+                if (result != null) return result
+            } catch (e: Exception) {
+                Log.w("NewPipe", "Invidious $instance failed: ${e.message}")
+                continue
+            }
+        }
+        return null
+    }
+
+    private fun parseInvidiousAudioStream(body: String, instance: String): String? {
+        val json = JSONObject(body)
+        val adaptiveFormats = json.optJSONArray("adaptiveFormats")
+        if (adaptiveFormats == null || adaptiveFormats.length() == 0) {
+            Log.w("NewPipe", "Invidious $instance: no adaptiveFormats")
+            return null
+        }
+
+        var bestUrl: String? = null
+        var bestBitrate = 0
+
+        for (i in 0 until adaptiveFormats.length()) {
+            val format = adaptiveFormats.getJSONObject(i)
+            val type = format.optString("type", "")
+            // Only audio formats
+            if (!type.startsWith("audio/")) continue
+            val url = format.optString("url", "")
+            val bitrate = format.optInt("bitrate", 0)
+            if (url.isEmpty()) continue
+
+            if (bitrate > bestBitrate) {
+                bestUrl = url
+                bestBitrate = bitrate
+            }
+        }
+
+        if (bestUrl != null) {
+            Log.d("NewPipe", "Invidious $instance: got audio at ${bestBitrate}bps")
+        }
+        return bestUrl
     }
 
     private fun downloadStream(url: String, title: String, ext: String, cacheDir: String): String? {

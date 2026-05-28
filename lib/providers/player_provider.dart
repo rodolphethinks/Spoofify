@@ -253,10 +253,17 @@ class PlayerProvider extends ChangeNotifier {
 
     AudioSource? source;
     try {
-      source = await YoutubeService.getAudioSource(
-        model.track.title,
-        model.track.artists,
-      );
+      if (model.track.youtubeUrl != null) {
+        source = await YoutubeService.getAudioSourceByUrl(
+          model.track.youtubeUrl!,
+          model.track.title,
+        );
+      } else {
+        source = await YoutubeService.getAudioSource(
+          model.track.title,
+          model.track.artists,
+        );
+      }
     } catch (e) {
       debugPrint('[Player] YouTube error: $e');
       if (seq != _playSeq) return;
@@ -409,10 +416,20 @@ class PlayerProvider extends ChangeNotifier {
     final model = tracks[nextIdx];
     debugPrint('[Player] Preloading next: ${model.track.title}');
 
-    final source = await YoutubeService.getAudioSource(
-      model.track.title,
-      model.track.artists,
-    );
+    AudioSource? source;
+    try {
+      if (model.track.youtubeUrl != null) {
+        source = await YoutubeService.getAudioSourceByUrl(
+          model.track.youtubeUrl!,
+          model.track.title,
+        );
+      } else {
+        source = await YoutubeService.getAudioSource(
+          model.track.title,
+          model.track.artists,
+        );
+      }
+    } catch (_) {}
 
     if (source != null) {
       model.preloadedSource = source;

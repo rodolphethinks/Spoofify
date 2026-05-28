@@ -64,6 +64,6 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
-    implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.2")
+    implementation("com.github.teamnewpipe:NewPipeExtractor:v0.25.2")
     implementation("com.squareup.okhttp3:okhttp:5.3.2")
 }

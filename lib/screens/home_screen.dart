@@ -108,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .replaceAll(RegExp(r'\s*\|.*$'), '')
         .trim();
     provider.playSearchResults(
-      [Track(title: title, artists: artist)],
+      [Track(title: title, artists: artist, youtubeUrl: r.url)],
       'Search',
       0,
     );

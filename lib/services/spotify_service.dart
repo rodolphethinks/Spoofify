@@ -4,8 +4,9 @@ import 'package:http/http.dart' as http;
 class Track {
   final String title;
   final String artists;
+  final String? youtubeUrl;
 
-  const Track({required this.title, required this.artists});
+  const Track({required this.title, required this.artists, this.youtubeUrl});
 }
 
 class SpotifySearchResult {
