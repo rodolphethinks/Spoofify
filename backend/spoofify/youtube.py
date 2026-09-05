@@ -260,8 +260,14 @@ def get_stream_response(video_id: str) -> tuple["requests.Response | None", str]
         return (info or {}).get("url"), (info or {}).get("ext", "webm")
 
     def try_mweb_pot():
+        # The bgutil server binds IPv6-only ([::]); the plugin's default
+        # base_url (http://127.0.0.1:4416) is IPv4 and silently fails to
+        # connect, so point it at the IPv6 loopback address instead.
         opts = {**base_opts, "js_runtimes": {"node": {}},
-                "extractor_args": {"youtube": {"player_client": ["mweb"]}}}
+                "extractor_args": {
+                    "youtube": {"player_client": ["mweb"]},
+                    "youtubepot-bgutilhttp": {"base_url": ["http://[::1]:4416"]},
+                }}
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(yt_url, download=False)
         return (info or {}).get("url"), (info or {}).get("ext", "webm")
