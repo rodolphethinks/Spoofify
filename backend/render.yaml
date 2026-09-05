@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: spoofify
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # Render sets $PORT automatically; the Dockerfile CMD reads it.
+    envVars:
+      # Optional: set a default playlist to load on startup (skips the home form)
+      - key: SPOTIFY_URL
+        value: ""
+      # Downloads land in /tmp — ephemeral but fine since tracks re-download on demand
+      - key: DOWNLOAD_FOLDER
+        value: /tmp/spoofify

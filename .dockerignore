@@ -1,0 +1,17 @@
+
+# Flutter app (not needed for the Python backend Docker image)
+android/
+ios/
+lib/
+test/
+.dart_tool/
+.flutter-plugins*
+build/
+
+# Python backend — exclude local/dev-only content
+backend/.venv/
+backend/node_modules/
+backend/downloads/
+backend/__pycache__/
+
+.git/
