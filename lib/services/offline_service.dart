@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'log_service.dart';
 import 'spotify_service.dart';
 import 'youtube_service.dart';
 
@@ -115,7 +115,7 @@ class OfflineService {
             list.map((e) => SavedPlaylist.fromJson(e as Map<String, dynamic>)).toList();
       }
     } catch (e) {
-      debugPrint('[Offline] Load error: $e');
+      appLog('[Offline] Load error: $e', level: LogLevel.error);
     }
     _loaded = true;
   }
@@ -159,7 +159,7 @@ class OfflineService {
             track.filePath != null) {
           final file = File(track.filePath!);
           if (await file.exists()) {
-            debugPrint('[Offline] Already downloaded: $title');
+            appLog('[Offline] Already downloaded: $title');
             return track.filePath;
           }
         }
@@ -267,7 +267,7 @@ class OfflineService {
         if (!isInOtherPlaylist) {
           try {
             await File(track.filePath!).delete();
-            debugPrint('[Offline] Deleted orphan: ${track.filePath}');
+            appLog('[Offline] Deleted orphan: ${track.filePath}');
           } catch (_) {}
         }
       }

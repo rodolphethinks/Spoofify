@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'log_service.dart';
 
 class LyricLine {
   final Duration time;
@@ -27,7 +27,7 @@ class LyricsService {
       });
 
       if (response.statusCode != 200) {
-        debugPrint('[Lyrics] Not found: ${response.statusCode}');
+        appLog('[Lyrics] Not found: ${response.statusCode}', level: LogLevel.warning);
         return null;
       }
 
@@ -47,7 +47,7 @@ class LyricsService {
 
       return _parseLrc(syncedLyrics);
     } catch (e) {
-      debugPrint('[Lyrics] Error: $e');
+      appLog('[Lyrics] Error: $e', level: LogLevel.error);
       return null;
     }
   }

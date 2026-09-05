@@ -5,6 +5,7 @@ import '../providers/player_provider.dart';
 import '../services/spotify_service.dart';
 import '../services/youtube_service.dart';
 import 'player_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -130,7 +131,20 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined,
+                        color: Colors.white54),
+                    tooltip: 'Settings & logs',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                    ),
+                  ),
+                ],
+              ),
               const Text(
                 'Spoofify',
                 textAlign: TextAlign.center,

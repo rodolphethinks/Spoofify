@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'log_service.dart';
 import 'spotify_service.dart';
 
 class YoutubeService {
@@ -15,6 +15,7 @@ class YoutubeService {
 
   /// Search YouTube via NewPipe extractor and return results
   static Future<List<SpotifySearchResult>> search(String query) async {
+    appLog('[YT] Searching: $query');
     try {
       final results = await _channel.invokeMethod<List<dynamic>>('searchYouTube', {
         'query': query,
@@ -32,6 +33,7 @@ class YoutubeService {
         );
       }).where((r) => r.name.isNotEmpty).toList();
     } on PlatformException catch (e) {
+      appLog('[YT] Search failed: ${e.code} - ${e.message}', level: LogLevel.error);
       throw Exception(e.message ?? 'YouTube search failed');
     }
   }
@@ -79,7 +81,7 @@ class YoutubeService {
 
   static Future<AudioSource?> _fetchAudioSource(
       String title, String artists) async {
-    debugPrint('[YT] Fetching: $artists - $title');
+    appLog('[YT] Fetching: $artists - $title');
     try {
       final cacheDir = (await getTemporaryDirectory()).path;
       final filePath = await _channel.invokeMethod<String>('getAudioFile', {
@@ -88,23 +90,23 @@ class YoutubeService {
         'cacheDir': cacheDir,
       });
       if (filePath == null) {
-        debugPrint('[YT] No audio found');
+        appLog('[YT] No audio found', level: LogLevel.error);
         return null;
       }
-      debugPrint('[YT] Got file: $filePath');
+      appLog('[YT] Got file: $filePath');
       return AudioSource.file(filePath);
     } on PlatformException catch (e) {
-      debugPrint('[YT] Platform error: ${e.code} - ${e.message}');
+      appLog('[YT] Platform error: ${e.code} - ${e.message}', level: LogLevel.error);
       throw Exception('YouTube: ${e.message ?? e.code}');
     } catch (e) {
-      debugPrint('[YT] Error: $e');
+      appLog('[YT] Error: $e', level: LogLevel.error);
       rethrow;
     }
   }
 
   static Future<AudioSource?> _fetchAudioByUrl(
       String youtubeUrl, String title) async {
-    debugPrint('[YT] Fetching by URL: $youtubeUrl');
+    appLog('[YT] Fetching by URL: $youtubeUrl');
     try {
       final cacheDir = (await getTemporaryDirectory()).path;
       final filePath = await _channel.invokeMethod<String>('getAudioFileByUrl', {
@@ -113,23 +115,23 @@ class YoutubeService {
         'cacheDir': cacheDir,
       });
       if (filePath == null) {
-        debugPrint('[YT] No audio found for URL');
+        appLog('[YT] No audio found for URL', level: LogLevel.error);
         return null;
       }
-      debugPrint('[YT] Got file: $filePath');
+      appLog('[YT] Got file: $filePath');
       return AudioSource.file(filePath);
     } on PlatformException catch (e) {
-      debugPrint('[YT] Platform error: ${e.code} - ${e.message}');
+      appLog('[YT] Platform error: ${e.code} - ${e.message}', level: LogLevel.error);
       throw Exception('YouTube: ${e.message ?? e.code}');
     } catch (e) {
-      debugPrint('[YT] Error: $e');
+      appLog('[YT] Error: $e', level: LogLevel.error);
       rethrow;
     }
   }
 
   static Future<String?> _downloadToDir(
       String title, String artists, String dir) async {
-    debugPrint('[YT] Downloading to dir: $artists - $title');
+    appLog('[YT] Downloading to dir: $artists - $title');
     try {
       final filePath = await _channel.invokeMethod<String>('getAudioFile', {
         'title': title,
@@ -137,16 +139,16 @@ class YoutubeService {
         'cacheDir': dir,
       });
       if (filePath == null) {
-        debugPrint('[YT] No audio found');
+        appLog('[YT] No audio found', level: LogLevel.error);
         return null;
       }
-      debugPrint('[YT] Downloaded: $filePath');
+      appLog('[YT] Downloaded: $filePath');
       return filePath;
     } on PlatformException catch (e) {
-      debugPrint('[YT] Platform error: ${e.code} - ${e.message}');
+      appLog('[YT] Platform error: ${e.code} - ${e.message}', level: LogLevel.error);
       return null;
     } catch (e) {
-      debugPrint('[YT] Error: $e');
+      appLog('[YT] Error: $e', level: LogLevel.error);
       return null;
     }
   }

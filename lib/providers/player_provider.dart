@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/offline_service.dart';
+import '../services/log_service.dart';
 import '../services/spotify_service.dart';
 import '../services/youtube_service.dart';
 
@@ -116,7 +117,7 @@ class PlayerProvider extends ChangeNotifier {
       await _loadHistory();
       notifyListeners();
     } catch (e) {
-      debugPrint('[Player] Init error: $e');
+      appLog('[Player] Init error: $e', level: LogLevel.error);
     }
   }
 
@@ -145,7 +146,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> loadPlaylist(String url) async {
-    debugPrint('[Spotify] Loading: $url');
+    appLog('[Spotify] Loading: $url');
     isLoadingPlaylist = true;
     playlistError = null;
     tracks = [];
@@ -157,7 +158,7 @@ class PlayerProvider extends ChangeNotifier {
       // Check if we have this playlist saved offline
       final saved = OfflineService.instance.getPlaylist(url);
       if (saved != null && saved.isFullyDownloaded) {
-        debugPrint('[Offline] Loading saved playlist: ${saved.name}');
+        appLog('[Offline] Loading saved playlist: ${saved.name}');
         playlistName = saved.name;
         tracks = saved.tracks
             .map((t) => TrackModel(Track(title: t.title, artists: t.artists)))
@@ -173,7 +174,7 @@ class PlayerProvider extends ChangeNotifier {
       } else {
         // Fetch from Spotify
         final (name, rawTracks) = await SpotifyService.getTracks(url);
-        debugPrint('[Spotify] Got ${rawTracks.length} tracks: $name');
+        appLog('[Spotify] Got ${rawTracks.length} tracks: $name');
         playlistName = name;
         tracks = rawTracks.map(TrackModel.new).toList();
 
@@ -187,8 +188,8 @@ class PlayerProvider extends ChangeNotifier {
         _saveHistory();
       }
     } catch (e, st) {
-      debugPrint('[Spotify] ERROR: $e');
-      debugPrint('[Spotify] STACK: $st');
+      appLog('[Spotify] ERROR: $e', level: LogLevel.error);
+      appLog('[Spotify] STACK: $st', level: LogLevel.error);
       // If fetch failed, try loading from offline cache
       final saved = OfflineService.instance.getPlaylist(url);
       if (saved != null) {
@@ -218,7 +219,7 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> playTrack(int index) async {
     if (index < 0 || index >= tracks.length) return;
     final seq = ++_playSeq;
-    debugPrint('[Player] playTrack($index) seq=$seq: ${tracks[index].track.title}');
+    appLog('[Player] playTrack($index) seq=$seq: ${tracks[index].track.title}');
 
     currentIndex = index;
     final model = tracks[index];
@@ -228,7 +229,7 @@ class PlayerProvider extends ChangeNotifier {
 
     // Check if this track was preloaded
     if (model.preloadedSource != null) {
-      debugPrint('[Player] Using preloaded source for ${model.track.title}');
+      appLog('[Player] Using preloaded source for ${model.track.title}');
       model.state = TrackState.ready;
       notifyListeners();
       await _loadAndPlay(model.preloadedSource!);
@@ -244,7 +245,7 @@ class PlayerProvider extends ChangeNotifier {
     final offlineSource = await _getOfflineSource(model);
     if (seq != _playSeq) return;
     if (offlineSource != null) {
-      debugPrint('[Player] Playing from offline storage');
+      appLog('[Player] Playing from offline storage');
       model.state = TrackState.ready;
       notifyListeners();
       await _loadAndPlay(offlineSource);
@@ -265,7 +266,7 @@ class PlayerProvider extends ChangeNotifier {
         );
       }
     } catch (e) {
-      debugPrint('[Player] YouTube error: $e');
+      appLog('[Player] YouTube error: $e', level: LogLevel.error);
       if (seq != _playSeq) return;
       model.state = TrackState.error;
       model.error = e.toString().replaceFirst('Exception: ', '');
@@ -277,12 +278,12 @@ class PlayerProvider extends ChangeNotifier {
     }
 
     if (seq != _playSeq) {
-      debugPrint('[Player] Aborted seq=$seq (current=$_playSeq)');
+      appLog('[Player] Aborted seq=$seq (current=$_playSeq)');
       return;
     }
 
     if (source == null) {
-      debugPrint('[Player] No source found for ${model.track.title}');
+      appLog('[Player] No source found for ${model.track.title}', level: LogLevel.error);
       model.state = TrackState.error;
       model.error = 'Not found on YouTube';
       notifyListeners();
@@ -292,7 +293,7 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
 
-    debugPrint('[Player] Got source, loading...');
+    appLog('[Player] Got source, loading...');
     model.state = TrackState.ready;
     notifyListeners();
 
@@ -300,16 +301,16 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _loadAndPlay(AudioSource source) async {
-    debugPrint('[Player] setAudioSource...');
+    appLog('[Player] setAudioSource...');
     try {
       await _player.setAudioSource(source);
       _updateNotificationMetadata();
-      debugPrint('[Player] play()');
+      appLog('[Player] play()');
       await _player.play();
-      debugPrint('[Player] playing!');
+      appLog('[Player] playing!');
     } catch (e, st) {
-      debugPrint('[Player] PLAYBACK ERROR: $e');
-      debugPrint('[Player] STACK: $st');
+      appLog('[Player] PLAYBACK ERROR: $e', level: LogLevel.error);
+      appLog('[Player] STACK: $st', level: LogLevel.error);
       if (currentIndex >= 0) {
         tracks[currentIndex].state = TrackState.error;
         tracks[currentIndex].error = 'Playback failed: $e';
@@ -377,7 +378,7 @@ class PlayerProvider extends ChangeNotifier {
 
   void addToQueue(Track track) {
     queue.add(track);
-    debugPrint('[Player] Queue add: ${track.title} (queue=${queue.length})');
+    appLog('[Player] Queue add: ${track.title} (queue=${queue.length})');
     notifyListeners();
   }
 
@@ -414,7 +415,7 @@ class PlayerProvider extends ChangeNotifier {
     _preloadingNext = true;
     _preloadedIndex = nextIdx;
     final model = tracks[nextIdx];
-    debugPrint('[Player] Preloading next: ${model.track.title}');
+    appLog('[Player] Preloading next: ${model.track.title}');
 
     AudioSource? source;
     try {
@@ -429,17 +430,19 @@ class PlayerProvider extends ChangeNotifier {
           model.track.artists,
         );
       }
-    } catch (_) {}
+    } catch (e) {
+      appLog('[Player] Preload failed for ${model.track.title}: $e', level: LogLevel.warning);
+    }
 
     if (source != null) {
       model.preloadedSource = source;
-      debugPrint('[Player] Preloaded: ${model.track.title}');
+      appLog('[Player] Preloaded: ${model.track.title}');
     }
   }
 
   void toggleShuffle() {
     shuffleEnabled = !shuffleEnabled;
-    debugPrint('[Player] Shuffle: $shuffleEnabled');
+    appLog('[Player] Shuffle: $shuffleEnabled');
     _preloadingNext = false;
     _preloadedIndex = -1;
     notifyListeners();
@@ -454,7 +457,7 @@ class PlayerProvider extends ChangeNotifier {
       case SpoofifyRepeatMode.one:
         repeatMode = SpoofifyRepeatMode.off;
     }
-    debugPrint('[Player] Repeat: $repeatMode');
+    appLog('[Player] Repeat: $repeatMode');
     notifyListeners();
   }
 
@@ -536,7 +539,7 @@ class PlayerProvider extends ChangeNotifier {
       await loadPlaylist(currentPlaylistUrl!);
       return result;
     } catch (e) {
-      debugPrint('[Offline] Refresh error: $e');
+      appLog('[Offline] Refresh error: $e', level: LogLevel.error);
       return null;
     }
   }
