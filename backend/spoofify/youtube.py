@@ -91,7 +91,9 @@ def _download_direct_mp3(url: str, dest_folder: Path, filename: str) -> Path:
     raw_path = dest_folder / f"{filename}.raw"
     mp3_path = dest_folder / f"{filename}.mp3"
 
-    resp = requests.get(url, stream=True, timeout=180, headers=_REQ_HEADERS)
+    # googlevideo (and some other CDNs) return 403 for requests without a
+    # Range header, even for otherwise-valid signed/PO-tokened URLs.
+    resp = requests.get(url, stream=True, timeout=180, headers={**_REQ_HEADERS, "Range": "bytes=0-"})
     resp.raise_for_status()
     with open(raw_path, "wb") as f:
         for chunk in resp.iter_content(chunk_size=65536):
@@ -125,6 +127,15 @@ if _cookie_env:
     _tmp.write(_cookie_env)
     _tmp.flush()
     _COOKIE_FILE = _tmp.name
+
+# Remembers which get_stream_url() strategy last worked, so it's tried first
+# for the next track (self-reordering retries).
+_last_successful_strategy = "mweb_pot"
+
+
+def _set_last_successful_strategy(name: str) -> None:
+    global _last_successful_strategy
+    _last_successful_strategy = name
 
 
 def _sc_opts(extra: dict | None = None) -> dict:
@@ -218,50 +229,78 @@ def search_youtube_video_id(title: str, artists: str) -> str | None:
     return None
 
 
-def get_stream_url(video_id: str) -> tuple[str | None, str]:
+def get_stream_response(video_id: str) -> tuple["requests.Response | None", str]:
     """
-    Extract a direct audio stream URL for a YouTube video.
-    Tries multiple strategies:
-      1. android_vr client — works on home/VPS IPs without cookies
-      2. web client with cookies — works on datacenter IPs (Render) when
-         YOUTUBE_COOKIES env var is set
-    Returns (url, content_type).
+    Open a direct audio stream for a YouTube video.
+    Tries multiple strategies, in an order that adapts based on whichever
+    strategy last succeeded (so the working one is tried first next time):
+      1. mweb client + local bgutil PO-Token provider — bypasses the
+         "Sign in to confirm you're not a bot" check on flagged/datacenter
+         IPs (like Render's) without needing cookies
+      2. android_vr client — no PO token needed, but as of late 2026 YouTube
+         403s actual playback for it even though extraction succeeds
+      3. web client with cookies — extra fallback if YOUTUBE_COOKIES is set
+    googlevideo URLs are single-use (a second request against the same URL
+    gets a 403), so each candidate is validated by opening the *real*
+    streaming request (with the Range header the CDN requires) and reusing
+    that same open connection for playback — never a separate throwaway
+    verification request.
+    Returns (open streaming response, content_type), caller must close it.
     """
     yt_url = f"https://www.youtube.com/watch?v={video_id}"
     base_opts = {"quiet": True, "no_warnings": True, "skip_download": True,
                  "format": "bestaudio/best"}
 
-    # Strategy 1: android_vr (no PO token needed, works on many IPs)
-    opts1 = {**base_opts, "extractor_args": {"youtube": {"player_client": ["android_vr"]}}}
-    if _COOKIE_FILE:
-        opts1["cookiefile"] = _COOKIE_FILE
-    try:
-        with yt_dlp.YoutubeDL(opts1) as ydl:
+    def try_android_vr():
+        opts = {**base_opts, "extractor_args": {"youtube": {"player_client": ["android_vr"]}}}
+        if _COOKIE_FILE:
+            opts["cookiefile"] = _COOKIE_FILE
+        with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(yt_url, download=False)
-            url = (info or {}).get("url")
-            ext = (info or {}).get("ext", "webm")
-            if url:
-                print(f"[spoofify] stream URL ok (android_vr) ext={ext}", flush=True)
-                return url, f"audio/{ext}"
-    except Exception as exc:
-        print(f"[spoofify] android_vr failed: {exc}", flush=True)
+        return (info or {}).get("url"), (info or {}).get("ext", "webm")
 
-    # Strategy 2: web client with cookies (required for datacenter IPs like Render)
-    if _COOKIE_FILE:
-        opts2 = {**base_opts, "cookiefile": _COOKIE_FILE,
-                 "extractor_args": {"youtube": {"player_client": ["web"]}}}
+    def try_mweb_pot():
+        opts = {**base_opts, "js_runtimes": {"node": {}},
+                "extractor_args": {"youtube": {"player_client": ["mweb"]}}}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(yt_url, download=False)
+        return (info or {}).get("url"), (info or {}).get("ext", "webm")
+
+    def try_web_cookies():
+        if not _COOKIE_FILE:
+            print("[spoofify] no cookies set — set YOUTUBE_COOKIES env var on Render", flush=True)
+            return None, "webm"
+        opts = {**base_opts, "cookiefile": _COOKIE_FILE, "js_runtimes": {"node": {}},
+                "extractor_args": {"youtube": {"player_client": ["web"]}}}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(yt_url, download=False)
+        return (info or {}).get("url"), (info or {}).get("ext", "webm")
+
+    def _open(url: str):
+        """Open the real streaming request; return it only if the CDN accepts it."""
+        r = requests.get(url, stream=True, timeout=300,
+                          headers={**_REQ_HEADERS, "Range": "bytes=0-"})
+        if r.status_code in (200, 206):
+            return r
+        r.close()
+        return None
+
+    strategies = {"mweb_pot": try_mweb_pot, "android_vr": try_android_vr, "web_cookies": try_web_cookies}
+    order = [_last_successful_strategy, *[s for s in strategies if s != _last_successful_strategy]]
+
+    for name in order:
         try:
-            with yt_dlp.YoutubeDL(opts2) as ydl:
-                info = ydl.extract_info(yt_url, download=False)
-                url = (info or {}).get("url")
-                ext = (info or {}).get("ext", "webm")
-                if url:
-                    print(f"[spoofify] stream URL ok (web+cookies) ext={ext}", flush=True)
-                    return url, f"audio/{ext}"
+            url, ext = strategies[name]()
+            if not url:
+                continue
+            resp = _open(url)
+            if resp:
+                print(f"[spoofify] stream URL ok ({name}) ext={ext}", flush=True)
+                _set_last_successful_strategy(name)
+                return resp, f"audio/{ext}"
+            print(f"[spoofify] {name} returned a URL but CDN rejected it", flush=True)
         except Exception as exc:
-            print(f"[spoofify] web+cookies failed: {exc}", flush=True)
-    else:
-        print("[spoofify] no cookies set — set YOUTUBE_COOKIES env var on Render", flush=True)
+            print(f"[spoofify] {name} failed: {exc}", flush=True)
 
     return None, "audio/webm"
 

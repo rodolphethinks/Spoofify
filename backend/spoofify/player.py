@@ -13,7 +13,6 @@ import os
 import re
 from pathlib import Path
 
-import requests as http_requests
 from flask import Flask, Response, abort, jsonify, redirect, render_template, request, stream_with_context, url_for
 
 from spoofify import spotify, youtube
@@ -115,14 +114,13 @@ def proxy_stream(pid: str, index: int):
             abort(404)
         track["yt_video_id"] = vid
 
-    stream_url, content_type = youtube.get_stream_url(track["yt_video_id"])
-    if not stream_url:
+    resp, content_type = youtube.get_stream_response(track["yt_video_id"])
+    if not resp:
         abort(502)
 
     def generate():
-        with http_requests.get(stream_url, stream=True, timeout=300) as r:
-            r.raise_for_status()
-            for chunk in r.iter_content(chunk_size=65536):
+        with resp:
+            for chunk in resp.iter_content(chunk_size=65536):
                 if chunk:
                     yield chunk
 
@@ -157,14 +155,13 @@ def api_stream():
     else:
         abort(400)
 
-    stream_url, content_type = youtube.get_stream_url(video_id)
-    if not stream_url:
+    resp, content_type = youtube.get_stream_response(video_id)
+    if not resp:
         abort(502)
 
     def generate():
-        with http_requests.get(stream_url, stream=True, timeout=300, headers=youtube._REQ_HEADERS) as r:
-            r.raise_for_status()
-            for chunk in r.iter_content(chunk_size=65536):
+        with resp:
+            for chunk in resp.iter_content(chunk_size=65536):
                 if chunk:
                     yield chunk
 

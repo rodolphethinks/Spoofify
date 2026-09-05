@@ -1,7 +1,22 @@
+# --- Stage 1: build the bgutil PO-Token provider server (Node/TypeScript) ---
+# This lets yt-dlp bypass YouTube's "Sign in to confirm you're not a bot"
+# check that datacenter IPs (like Render's) hit even with android_vr.
+# https://github.com/Brainicism/bgutil-ytdlp-pot-provider
+FROM node:20-slim AS potbuilder
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --single-branch --branch 1.3.2 --depth 1 \
+    https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /pot
+WORKDIR /pot/server
+RUN npm ci && npx tsc
+
+# --- Stage 2: the actual app image ---
 FROM python:3.11-slim
 
-# Install ffmpeg (required for yt-dlp MP3 conversion)
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+# ffmpeg (yt-dlp MP3 conversion) + Node.js runtime (to run the built POT server)
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -15,13 +30,12 @@ RUN uv sync --frozen --no-dev
 
 # Copy backend source only (Flutter app lives alongside it in the repo, not needed here)
 COPY backend/ .
+RUN chmod +x start.sh
+
+# Built PO-Token provider server from stage 1
+COPY --from=potbuilder /pot/server/build /opt/bgutil-pot/build
+COPY --from=potbuilder /pot/server/node_modules /opt/bgutil-pot/node_modules
 
 ENV DOWNLOAD_FOLDER=/tmp/spoofify
 
-# Gunicorn: 1 worker (in-memory cache), gthread for concurrent audio streaming + downloads
-CMD .venv/bin/gunicorn "spoofify.player:app" \
-    --bind "0.0.0.0:${PORT:-8000}" \
-    --workers 1 \
-    --worker-class gthread \
-    --threads 4 \
-    --timeout 300
+CMD ["./start.sh"]
